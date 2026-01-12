@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能水质监测系统</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="static/css/style.css">
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo">
+                <i class="fa-solid fa-droplet"></i>
+                <h1>智能水质监测系统</h1>
+            </div>
+            <div class="status-bar">
+                <span id="connection-status" class="status-badge disconnected">
+                    <i class="fa-solid fa-circle"></i> 未连接
+                </span>
+                <button id="theme-toggle" class="icon-btn"><i class="fa-solid fa-sun"></i></button>
+                <button id="settings-btn" class="icon-btn"><i class="fa-solid fa-gear"></i></button>
+            </div>
+        </header>
+
+        <main>
+            <!-- 传感器数据卡片 -->
+            <section class="dashboard-grid">
+                <div class="card sensor-card">
+                    <div class="card-icon quality">
+                        <i class="fa-solid fa-leaf"></i>
+                    </div>
+                    <div class="card-info">
+                        <h3>水质指数</h3>
+                        <div class="value-container">
+                            <span id="val-quality" class="value">--</span>
+                            <span class="unit">/100</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card sensor-card">
+                    <div class="card-icon pressure">
+                        <i class="fa-solid fa-gauge-high"></i>
+                    </div>
+                    <div class="card-info">
+                        <h3>实时水压</h3>
+                        <div class="value-container">
+                            <span id="val-pressure" class="value">--</span>
+                            <span class="unit">MPa</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card sensor-card">
+                    <div class="card-icon flow">
+                        <i class="fa-solid fa-water"></i>
+                    </div>
+                    <div class="card-info">
+                        <h3>实时流量</h3>
+                        <div class="value-container">
+                            <span id="val-flow" class="value">--</span>
+                            <span class="unit">L/min</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 图表区域 -->
+            <section class="chart-section">
+                <div class="card chart-card">
+                    <div class="card-header">
+                        <h2>实时趋势</h2>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="mainChart"></canvas>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 控制与诊断 -->
+            <section class="control-grid">
+                <!-- 设备控制 -->
+                <div class="card control-card">
+                    <div class="card-header">
+                        <h2>设备控制</h2>
+                    </div>
+                    <div class="control-items">
+                        <div class="control-item">
+                            <div class="control-info">
+                                <i class="fa-solid fa-pump-medical"></i>
+                                <span>主水泵</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="sw-pump">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-info">
+                                <i class="fa-solid fa-faucet"></i>
+                                <span>电磁阀</span>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" id="sw-valve">
+                                <span class="slider round"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- AI 诊断 -->
+                <div class="card ai-card">
+                    <div class="card-header">
+                        <h2><i class="fa-solid fa-robot"></i> AI 智能诊断</h2>
+                        <button id="diagnose-btn" class="action-btn">
+                            <span>一键诊断</span>
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        </button>
+                    </div>
+                    <div class="ai-content">
+                        <div id="ai-loading" class="hidden">
+                            <div class="typing-indicator">
+                                <span></span><span></span><span></span>
+                            </div>
+                            <p>AI 正在分析数据...</p>
+                        </div>
+                        <div id="ai-result" class="ai-result-text">
+                            点击"一键诊断"获取基于当前传感器数据的智能分析报告。
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 悬浮聊天按钮 -->
+    <div id="chat-btn" class="floating-btn">
+        <i class="fa-solid fa-comment-dots"></i>
+    </div>
+
+    <!-- 聊天对话框 -->
+    <div id="chat-box" class="chat-box">
+        <div class="chat-header">
+            <h3>AI 助手</h3>
+            <button id="close-chat" class="icon-btn"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div id="chat-messages" class="chat-messages">
+            <div class="message ai">
+                你好！我是你的智能水质监测助手。有什么我可以帮你的吗？
+            </div>
+        </div>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="输入消息...">
+            <button id="send-msg-btn"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <!-- 设置模态框 -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>MQTT 设置</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>服务器地址 (WebSocket)</label>
+                    <input type="text" id="mqtt-host" value="wss://broker.hivemq.com:8884/mqtt">
+                </div>
+                <div class="form-group">
+                    <label>水质主题</label>
+                    <input type="text" id="topic-quality" value="sensor/water/quality">
+                </div>
+                <div class="form-group">
+                    <label>水压主题</label>
+                    <input type="text" id="topic-pressure" value="sensor/water/pressure">
+                </div>
+                <div class="form-group">
+                    <label>流量主题</label>
+                    <input type="text" id="topic-flow" value="sensor/water/flow">
+                </div>
+                <div class="form-group">
+                    <label>水泵控制主题</label>
+                    <input type="text" id="topic-pump" value="control/pump">
+                </div>
+                <div class="form-group">
+                    <label>电磁阀控制主题</label>
+                    <input type="text" id="topic-valve" value="control/valve">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="save-settings" class="primary-btn">保存并连接</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="static/js/app.js"></script>
+</body>
+</html>
