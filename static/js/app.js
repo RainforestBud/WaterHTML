@@ -319,7 +319,7 @@ function setupEventListeners() {
         }
 
         console.log('Saving config:', JSON.stringify(config.llm));
-        localStorage.setItem('mqtt_config', JSON.stringify(config));
+        localStorage.setItem('mqtt_config', JSON.stringify({ ...config, _version: CONFIG_VERSION }));
         modal.style.display = 'none';
         initMQTT(); // 重新连接
     }
@@ -391,11 +391,17 @@ async function performDiagnosis() {
 }
 
 // 加载设置
+const CONFIG_VERSION = 2;  // 修改默认配置后递增此值
+
 function loadSettings() {
     const savedConfig = localStorage.getItem('mqtt_config');
     if (savedConfig) {
         const saved = JSON.parse(savedConfig);
-        // 合并，确保新字段有默认值
+        // 版本不同则清除旧配置，使用代码中的新默认值
+        if (saved._version !== CONFIG_VERSION) {
+            localStorage.removeItem('mqtt_config');
+            return;
+        }
         config.host = saved.host || config.host;
         config.topics = { ...config.topics, ...saved.topics };
         config.llm = { ...config.llm, ...(saved.llm || {}) };
