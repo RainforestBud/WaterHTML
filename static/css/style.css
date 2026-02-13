@@ -373,12 +373,20 @@ input:checked + .slider:before {
 
 .modal-content {
     background-color: var(--card-bg);
-    margin: 10% auto;
+    margin: 5% auto;
     padding: 30px;
     border-radius: var(--border-radius);
     width: 90%;
     max-width: 500px;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
     border: 1px solid var(--border-color);
+}
+
+.modal-body {
+    overflow-y: auto;
+    flex: 1;
 }
 
 .modal-header {

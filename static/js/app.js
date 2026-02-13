@@ -9,13 +9,18 @@ let currentData = {
 
 // 默认配置
 let config = {
-    host: 'wss://broker.hivemq.com:8884/mqtt',
+    host: 'wss://broker.emqx.io:8084/mqtt',
     topics: {
         quality: 'sensor/water/quality',
         pressure: 'sensor/water/pressure',
         flow: 'sensor/water/flow',
         pump: 'control/pump',
         valve: 'control/valve'
+    },
+    llm: {
+        apiUrl: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+        apiKey: 'a3957d88a9e04bc288c4214a5201e847.H6PkLGmnTLQrzkTk',
+        model: 'GLM-4.7-Flash'
     }
 };
 
@@ -31,7 +36,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // 初始化图表
 function initChart() {
     const ctx = document.getElementById('mainChart').getContext('2d');
-    
+
     // 渐变色
     const gradientQuality = ctx.createLinearGradient(0, 0, 0, 400);
     gradientQuality.addColorStop(0, 'rgba(48, 209, 88, 0.5)');
@@ -128,7 +133,7 @@ function startChartLoop() {
     setInterval(() => {
         const timestamp = new Date().toLocaleTimeString();
         const labels = chart.data.labels;
-        
+
         // 移除旧数据
         if (labels.length >= 20) {
             labels.shift();
@@ -156,14 +161,14 @@ function initMQTT() {
     statusEl.className = 'status-badge';
 
     console.log(`Connecting to ${config.host}...`);
-    
+
     mqttClient = mqtt.connect(config.host);
 
     mqttClient.on('connect', () => {
         console.log('MQTT Connected');
         statusEl.innerHTML = '<i class="fa-solid fa-circle"></i> 已连接';
         statusEl.className = 'status-badge connected';
-        
+
         // 订阅主题
         const topics = [
             config.topics.quality,
@@ -181,7 +186,7 @@ function initMQTT() {
         try {
             const payload = JSON.parse(message.toString());
             const value = payload.value !== undefined ? payload.value : payload;
-            
+
             updateData(topic, value);
         } catch (e) {
             // 如果不是JSON，尝试直接解析数字
@@ -197,7 +202,7 @@ function initMQTT() {
         statusEl.innerHTML = '<i class="fa-solid fa-circle"></i> 连接错误';
         statusEl.className = 'status-badge disconnected';
     });
-    
+
     mqttClient.on('offline', () => {
         statusEl.innerHTML = '<i class="fa-solid fa-circle"></i> 离线';
         statusEl.className = 'status-badge disconnected';
@@ -287,6 +292,9 @@ function setupEventListeners() {
         document.getElementById('topic-flow').value = config.topics.flow;
         document.getElementById('topic-pump').value = config.topics.pump;
         document.getElementById('topic-valve').value = config.topics.valve;
+        document.getElementById('llm-api-url').value = config.llm.apiUrl;
+        document.getElementById('llm-api-key').value = config.llm.apiKey;
+        document.getElementById('llm-model').value = config.llm.model;
         modal.style.display = 'block';
     }
 
@@ -296,13 +304,21 @@ function setupEventListeners() {
     }
 
     saveBtn.onclick = () => {
-        config.host = document.getElementById('mqtt-host').value;
-        config.topics.quality = document.getElementById('topic-quality').value;
-        config.topics.pressure = document.getElementById('topic-pressure').value;
-        config.topics.flow = document.getElementById('topic-flow').value;
-        config.topics.pump = document.getElementById('topic-pump').value;
-        config.topics.valve = document.getElementById('topic-valve').value;
-        
+        config.host = document.getElementById('mqtt-host').value.trim();
+        config.topics.quality = document.getElementById('topic-quality').value.trim();
+        config.topics.pressure = document.getElementById('topic-pressure').value.trim();
+        config.topics.flow = document.getElementById('topic-flow').value.trim();
+        config.topics.pump = document.getElementById('topic-pump').value.trim();
+        config.topics.valve = document.getElementById('topic-valve').value.trim();
+        config.llm.apiUrl = document.getElementById('llm-api-url').value.trim();
+        config.llm.apiKey = document.getElementById('llm-api-key').value.trim();
+        config.llm.model = document.getElementById('llm-model').value.trim();
+
+        if (!config.llm.apiKey) {
+            alert('⚠️ API Key 为空，AI诊断和聊天功能将无法使用！');
+        }
+
+        console.log('Saving config:', JSON.stringify(config.llm));
         localStorage.setItem('mqtt_config', JSON.stringify(config));
         modal.style.display = 'none';
         initMQTT(); // 重新连接
@@ -312,8 +328,8 @@ function setupEventListeners() {
 // 发布控制命令
 function publishControl(topic, command) {
     if (mqttClient && mqttClient.connected) {
-        mqttClient.publish(topic, command);
-        console.log(`Published ${command} to ${topic}`);
+        mqttClient.publish(topic, command, { qos: 1, retain: true });
+        console.log(`Published ${command} to ${topic} (QoS 1)`);
     } else {
         alert('MQTT 未连接');
     }
@@ -340,14 +356,14 @@ async function performDiagnosis() {
         请分析当前系统状态是否正常，是否存在潜在风险，并给出操作建议。请保持回答简洁专业。
         `;
 
-        const response = await fetch('https://api-inference.modelscope.cn/v1/chat/completions', {
+        const response = await fetch(config.llm.apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ms-6fbd18c0-92d2-4691-aa43-38c02c47b97b'
+                'Authorization': 'Bearer ' + config.llm.apiKey
             },
             body: JSON.stringify({
-                model: 'Qwen/Qwen2.5-7B-Instruct',
+                model: config.llm.model,
                 messages: [
                     { role: 'system', content: '你是一个专业的水处理系统诊断助手。' },
                     { role: 'user', content: prompt }
@@ -362,7 +378,7 @@ async function performDiagnosis() {
 
         const data = await response.json();
         const diagnosis = data.choices[0].message.content;
-        
+
         resultEl.innerHTML = marked.parse(diagnosis);
     } catch (error) {
         console.error('Diagnosis error:', error);
@@ -378,7 +394,11 @@ async function performDiagnosis() {
 function loadSettings() {
     const savedConfig = localStorage.getItem('mqtt_config');
     if (savedConfig) {
-        config = JSON.parse(savedConfig);
+        const saved = JSON.parse(savedConfig);
+        // 合并，确保新字段有默认值
+        config.host = saved.host || config.host;
+        config.topics = { ...config.topics, ...saved.topics };
+        config.llm = { ...config.llm, ...(saved.llm || {}) };
     }
 }
 
@@ -392,7 +412,7 @@ function initTheme() {
 function toggleTheme() {
     const currentTheme = document.documentElement.getAttribute('data-theme');
     const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-    
+
     document.documentElement.setAttribute('data-theme', newTheme);
     localStorage.setItem('theme', newTheme);
     updateThemeIcon(newTheme);
@@ -412,7 +432,7 @@ async function sendMessage() {
     const input = document.getElementById('chat-input');
     const message = input.value.trim();
     const messagesContainer = document.getElementById('chat-messages');
-    
+
     if (!message) return;
 
     // 添加用户消息
@@ -433,14 +453,14 @@ async function sendMessage() {
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
 
     try {
-        const response = await fetch('https://api-inference.modelscope.cn/v1/chat/completions', {
+        const response = await fetch(config.llm.apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': 'Bearer ms-6fbd18c0-92d2-4691-aa43-38c02c47b97b'
+                'Authorization': 'Bearer ' + config.llm.apiKey
             },
             body: JSON.stringify({
-                model: 'Qwen/Qwen2.5-7B-Instruct',
+                model: config.llm.model,
                 messages: [
                     { role: 'system', content: '你是一个专业的水处理系统助手。你可以回答关于水质监测、设备维护和一般水处理知识的问题。' },
                     { role: 'user', content: message }
